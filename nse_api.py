@@ -291,5 +291,13 @@ class NSEDataFetcher:
             
         Returns:
             int: Lot size for the symbol
+            
+        Raises:
+            ValueError: If symbol not found in lot sizes cache
         """
-        return self.lot_sizes.get(symbol, 1000)  # Default to 1000 if not found
+        if symbol not in self.lot_sizes:
+            raise ValueError(
+                f"Lot size not found for symbol '{symbol}'. "
+                f"Symbol may not be available for F&O trading or may not be in the NSE lot sizes CSV."
+            )
+        return self.lot_sizes[symbol]
