@@ -1,4 +1,4 @@
 jugaad-data
+requests
 pandas
-numpy
-nsepython
+streamlit
