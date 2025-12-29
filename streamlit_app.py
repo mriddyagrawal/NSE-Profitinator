@@ -21,7 +21,7 @@ st.set_page_config(
 )
 
 # Preferences file path
-PREFERENCES_FILE = "preferences.json"
+PREFERENCES_FILE = "cache/preferences.json"
 
 # Default preferences
 DEFAULT_PREFERENCES = {
@@ -30,6 +30,7 @@ DEFAULT_PREFERENCES = {
     "sort_by": "ROI",
     "atm_range_lower": 0.98,
     "atm_range_upper": 1.05,
+    "margin": 0.25,
     "auto_refresh": True
 }
 
@@ -126,6 +127,18 @@ atm_upper = st.sidebar.number_input(
     help="Upper bound of ATM range (e.g., 1.05 = 105% of current price)"
 )
 
+# Margin requirement
+st.sidebar.subheader("Margin")
+margin = st.sidebar.number_input(
+    "Margin Required",
+    min_value=0.10,
+    max_value=1.00,
+    value=st.session_state.preferences.get("margin", DEFAULT_PREFERENCES["margin"]),
+    step=0.05,
+    format="%.2f",
+    help="Margin required to sell a CALL/PUT (0.25 = 25%)."
+)
+
 # Sort by
 sort_by = st.sidebar.selectbox(
     "Sort By",
@@ -149,17 +162,12 @@ if st.sidebar.button("💾 Save Preferences"):
         "sort_by": sort_by,
         "atm_range_lower": atm_lower,
         "atm_range_upper": atm_upper,
+        "margin": margin,
         "auto_refresh": auto_refresh
     }
     save_preferences(new_prefs)
     st.session_state.preferences = new_prefs
     st.sidebar.success("✓ Preferences saved!")
-
-# Reset preferences button
-if st.sidebar.button("🔄 Reset to Default"):
-    save_preferences(DEFAULT_PREFERENCES)
-    st.session_state.preferences = DEFAULT_PREFERENCES.copy()
-    st.rerun()
 
 # Main content
 st.title("📈 NSE Options Trading Analysis")
@@ -256,7 +264,7 @@ try:
                     
                     # Calculate metrics
                     combined_premium = call_premium + put_premium
-                    investment = 0.50 * lot_size * current_price
+                    investment = margin * 2 * lot_size * current_price
                     max_profit = combined_premium * lot_size
                     max_roi = (max_profit / investment) * 100
                     
@@ -267,15 +275,14 @@ try:
                     all_opportunities.append({
                         'Symbol': symbol,
                         'Current': current_price,
-                        'Lot Size': lot_size,
                         'Strike': strike,
                         'Expiry': expiry,
                         'CALL': call_premium,
                         'PUT': put_premium,
                         'C+P': round(combined_premium, 2),
                         'Investment': int(investment),
-                        'Max Profit': int(max_profit),
-                        'ROI %': round(max_roi, 2),
+                        'MAX Profit': int(max_profit),
+                        'MAX ROI %': round(max_roi, 2),
                         'Short Safety': round(short_safety, 2),
                         'Long Safety': round(long_safety, 2),
                         'CALL Vol': call_volume,
@@ -295,7 +302,7 @@ try:
         
         # Sort by ROI or normal
         if sort_by == 'ROI':
-            df = df.sort_values('ROI %', ascending=False)
+            df = df.sort_values('MAX ROI %', ascending=False)
         else:
             df = df.sort_values(['Symbol', 'Strike'])
         
@@ -311,16 +318,16 @@ try:
             hide_index=False,
             column_config={
                 "Symbol": st.column_config.TextColumn("Symbol", width="small"),
-                "Current": st.column_config.NumberColumn("Current", format="₹%.2f"),
-                "Strike": st.column_config.NumberColumn("Strike", format="%.2f"),
-                "CALL": st.column_config.NumberColumn("CALL", format="₹%.2f"),
-                "PUT": st.column_config.NumberColumn("PUT", format="₹%.2f"),
-                "C+P": st.column_config.NumberColumn("C+P", format="₹%.2f"),
-                "Investment": st.column_config.NumberColumn("Investment", format="₹%d"),
-                "Max Profit": st.column_config.NumberColumn("Max Profit", format="₹%d"),
-                "ROI %": st.column_config.NumberColumn("ROI %", format="%.2f%%"),
-                "Short Safety": st.column_config.NumberColumn("Short Safety", format="₹%.2f"),
-                "Long Safety": st.column_config.NumberColumn("Long Safety", format="₹%.2f"),
+                "Current": st.column_config.NumberColumn("Current", format="₹ %.2f"),
+                "Strike": st.column_config.NumberColumn("Strike", format="₹ %.2f"),
+                "CALL": st.column_config.NumberColumn("CALL", format="₹ %.2f"),
+                "PUT": st.column_config.NumberColumn("PUT", format="₹ %.2f"),
+                "C+P": st.column_config.NumberColumn("C+P", format="₹ %.2f"),
+                "Investment": st.column_config.NumberColumn("Investment", format="₹ %d"),
+                "MAX Profit": st.column_config.NumberColumn("MAX Profit", format="₹%d"),
+                "MAX ROI %": st.column_config.NumberColumn("MAX ROI %", format="%.2f%%"),
+                "Short Safety": st.column_config.NumberColumn("Short Safety", format="₹ %.2f"),
+                "Long Safety": st.column_config.NumberColumn("Long Safety", format="₹ %.2f"),
             }
         )
         
@@ -328,9 +335,9 @@ try:
         st.subheader("📊 Summary")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Avg ROI", f"{df['ROI %'].mean():.2f}%")
+            st.metric("Avg ROI", f"{df['MAX ROI %'].mean():.2f}%")
         with col2:
-            st.metric("Max ROI", f"{df['ROI %'].max():.2f}%")
+            st.metric("Max ROI", f"{df['MAX ROI %'].max():.2f}%")
         with col3:
             st.metric("Avg Investment", f"₹{df['Investment'].mean():,.0f}")
     
@@ -401,36 +408,29 @@ try:
                     
                     # Calculate metrics for covered call
                     # Investment = stock purchase cost (with margin)
-                    investment = int(current_price * lot_size / 1.5)  # ~67% margin
-                    interest = round(0.01 * current_price * lot_size / 1.5, 2)  # Holding cost
+                    investment = int(margin * lot_size * current_price)
+                    interest = round(0.01 * margin * lot_size * current_price, 2)  # Holding cost
                     
                     # Max Profit: if stock rises to strike + premium collected - interest
                     max_profit = int(((strike - current_price + call_premium) * lot_size) - interest)
                     max_roi = round(100 * (((strike - current_price + call_premium) * lot_size) - interest) / investment, 2)
                     
-                    # Opportunity Profit: if stock stays flat, you keep premium
-                    op_profit = int((call_premium * lot_size) - interest)
-                    op_roi = round(100 * ((call_premium * lot_size) - interest) / investment, 2)
-                    
-                    # Zero Point: price at which you break even
-                    zero_point = round((1.003 * current_price) - call_premium, 2)
-                    zero_point_pct = round(((call_premium - (0.003 * current_price)) / current_price * 100), 2)
+                    # Safety Point: price at which you break even
+                    safety_point = round((1.003 * current_price) - call_premium, 2)
+                    safety_pct = round(((call_premium - (0.003 * current_price)) / current_price * 100), 2)
                     
                     all_opportunities2.append({
                         'Symbol': symbol,
                         'Current': current_price,
-                        'Lot Size': lot_size,
-                        'Investment': investment,
-                        'Expiry': expiry,
                         'Strike': strike,
-                        'Premium': call_premium,
-                        'Max ROI %': max_roi,
-                        'OP ROI %': op_roi,
-                        'Max Profit': max_profit,
-                        'OP Profit': op_profit,
-                        'Zero Point': zero_point,
-                        'Zero %': zero_point_pct,
-                        'Volume': call_volume
+                        'Expiry': expiry,
+                        'CALL': call_premium,
+                        'Investment': investment,
+                        'MAX Profit': max_profit,
+                        'MAX ROI %': max_roi,
+                        'Safety Point': safety_point,
+                        'Safety %': safety_pct,
+                        'CALL Vol': call_volume
                     })
         
         except Exception as e:
@@ -444,8 +444,8 @@ try:
     if all_opportunities2:
         df2 = pd.DataFrame(all_opportunities2)
         
-        # Sort by Max ROI
-        df2 = df2.sort_values('Max ROI %', ascending=False)
+        # Sort by ROI
+        df2 = df2.sort_values('MAX ROI %', ascending=False)
         df2 = df2.reset_index(drop=True)
         
         # Display dataframe with formatting
@@ -459,26 +459,26 @@ try:
             column_config={
                 "Symbol": st.column_config.TextColumn("Symbol", width="small"),
                 "Expiry": st.column_config.TextColumn("Expiry", width="small"),
-                "Current": st.column_config.NumberColumn("Current", format="₹%.2f"),
-                "Strike": st.column_config.NumberColumn("Strike", format="%.2f"),
-                "Premium": st.column_config.NumberColumn("Premium", format="₹%.2f"),
-                "Investment": st.column_config.NumberColumn("Investment", format="₹%d"),
-                "Max Profit": st.column_config.NumberColumn("Max Profit", format="₹%d"),
-                "OP Profit": st.column_config.NumberColumn("OP Profit", format="₹%d"),
-                "Max ROI %": st.column_config.NumberColumn("Max ROI %", format="%.2f%%"),
-                "OP ROI %": st.column_config.NumberColumn("OP ROI %", format="%.2f%%"),
-                "Zero Point": st.column_config.NumberColumn("Zero Point", format="₹%.2f"),
-                "Zero %": st.column_config.NumberColumn("Zero %", format="%.2f%%"),
+                "Current": st.column_config.NumberColumn("Current", format="₹ %.2f"),
+                "Strike": st.column_config.NumberColumn("Strike", format="₹ %.2f"),
+                "Safety Point": st.column_config.NumberColumn("Safety Point", format="₹ %.2f"),
+                "Safety %": st.column_config.NumberColumn("Safety %", format="%.2f%%"),
+                "CALL": st.column_config.NumberColumn("CALL", format="₹ %.2f"),
+                "Investment": st.column_config.NumberColumn("Investment", format="₹ %d", help=f"This includes a margin of {margin*100:.0f}% and the interest"),
+                "MAX Profit": st.column_config.NumberColumn("MAX Profit", format="₹ %d"),
+                "MAX ROI %": st.column_config.NumberColumn("MAX ROI %", format="%.2f%%"),
+                "CALL Vol": st.column_config.NumberColumn("CALL Vol", format="%d"),
             }
         )
         
         # Summary statistics
+        st.divider()
         st.subheader("📊 Summary")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Avg Max ROI", f"{df2['Max ROI %'].mean():.2f}%")
+            st.metric("Avg ROI", f"{df2['MAX ROI %'].mean():.2f}%")
         with col2:
-            st.metric("Avg OP ROI", f"{df2['OP ROI %'].mean():.2f}%")
+            st.metric("Max ROI", f"{df2['MAX ROI %'].max():.2f}%")
         with col3:
             st.metric("Avg Investment", f"₹{df2['Investment'].mean():,.0f}")
     
