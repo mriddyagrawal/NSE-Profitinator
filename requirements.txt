@@ -1,3 +1,4 @@
 jugaad-data
 pandas
 numpy
+nsepython
