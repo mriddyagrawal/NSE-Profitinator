@@ -490,5 +490,5 @@ except Exception as e:
 
 # Auto-refresh logic
 if auto_refresh:
-    sleep(15)
+    sleep(30)
     st.rerun()
