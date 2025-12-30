@@ -149,9 +149,9 @@ sort_by = st.sidebar.selectbox(
 
 # Auto-refresh toggle
 auto_refresh = st.sidebar.checkbox(
-    "Auto-refresh (15s)",
+    "Auto-refresh (30s)",
     value=st.session_state.preferences.get("auto_refresh", True),
-    help="Automatically refresh data every 15 seconds"
+    help="Automatically refresh data every 30 seconds"
 )
 
 # Save preferences button
