@@ -154,7 +154,7 @@ auto_refresh = st.sidebar.checkbox(
     help="Automatically refresh data every 30 seconds"
 )
 
-# Save preferences button
+# Save preferences button here
 if st.sidebar.button("💾 Save Preferences"):
     new_prefs = {
         "stock_list": selected_stocks,
